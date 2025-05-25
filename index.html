@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ship Turnaround Simulator | Pelabuhan Indonesia</title>
+    <meta
+      name="description"
+      content="Simulator waktu bongkar muat kapal untuk pelabuhan Indonesia dengan dashboard analitik"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <main class="container">
+      <header class="simulator-header">
+        <h1><i class="fas fa-ship"></i> Ship Turnaround Time Simulator</h1>
+        <p class="subtitle">
+          Alat simulasi efisiensi operasional pelabuhan dengan analitik
+          terintegrasi
+        </p>
+      </header>
+
+      <section class="simulator-card">
+        <form id="simulatorForm">
+          <!-- GT Input -->
+          <div class="input-group">
+            <label for="gt">
+              <i class="fas fa-weight-hanging"></i> Gross Tonnage (GT)
+            </label>
+            <input
+              type="text"
+              id="gt"
+              inputmode="numeric"
+              placeholder="Contoh: 20.000"
+              aria-describedby="gtHelp"
+            />
+            <small id="gtHelp" class="help-text"
+              >GT memengaruhi waktu dan biaya pelabuhan</small
+            >
+          </div>
+
+          <!-- Cargo Type -->
+          <div class="input-group">
+            <label for="cargoType">
+              <i class="fas fa-boxes"></i> Jenis Muatan
+            </label>
+            <select id="cargoType" aria-label="Pilih jenis muatan">
+              <option value="container">Container</option>
+              <option value="dry_bulk">Dry Bulk</option>
+              <option value="liquid">Liquid (Tanker)</option>
+            </select>
+          </div>
+
+          <!-- Crane Input (hidden for liquid) -->
+          <div id="craneGroup" class="input-group">
+            <label for="cranes">
+              <i class="fas fa-crane"></i> Jumlah Crane
+            </label>
+            <input
+              type="range"
+              id="cranes"
+              min="1"
+              max="5"
+              value="3"
+              aria-describedby="craneHelp"
+            />
+            <div class="range-value">
+              <span id="craneValue">3</span>
+              <small id="craneHelp">(STS Crane)</small>
+            </div>
+          </div>
+
+          <!-- Liquid Specific (hidden by default) -->
+          <div id="liquidFields" class="input-group" hidden>
+            <label for="pumpCapacity">
+              <i class="fas fa-faucet"></i> Kapasitas Pumping (m³/jam)
+            </label>
+            <input
+              type="number"
+              id="pumpCapacity"
+              placeholder="Contoh: 1000"
+              min="500"
+              step="100"
+            />
+          </div>
+
+          <button type="button" id="calculateBtn" class="calculate-btn">
+            <i class="fas fa-calculator"></i> Hitung Data
+          </button>
+        </form>
+
+        <!-- Results Section -->
+        <section id="results" class="results" aria-live="polite">
+          <h2>Hasil Simulasi</h2>
+
+          <div class="time-result">
+            <span id="time">-</span>
+            <span class="unit">jam</span>
+          </div>
+
+          <div class="progress-container">
+            <div class="progress-bar">
+              <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-labels">
+              <span>Cepat</span>
+              <span>Standar</span>
+              <span>Lambat</span>
+            </div>
+          </div>
+
+          <div id="breakdown" class="breakdown"></div>
+
+          <div id="recommendation" class="recommendation">
+            <i class="fas fa-info-circle"></i>
+            <p>Masukkan parameter kapal untuk melihat analisis</p>
+          </div>
+        </section>
+      </section>
+
+      <!-- New Dashboard Integration Section -->
+      <section class="dashboard-card">
+        <h2><i class="fas fa-chart-line"></i> Analitik Historis</h2>
+        <p class="subtitle">
+          Data simulasi yang telah tersimpan akan muncul di dashboard berikut:
+        </p>
+
+        <div class="dashboard-container">
+          <iframe
+            width="100%"
+            height="600"
+            src="https://lookerstudio.google.com/embed/reporting/2e75ade5-0c10-46b7-b67d-31a4a0144745/page/a9gLF"
+            frameborder="0"
+            style="border: 0"
+            allowfullscreen
+            sandbox="allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+          ></iframe>
+        
+          <p class="dashboard-note">
+            <i class="fas fa-info-circle"></i> Dashboard membutuhkan waktu
+            beberapa menit untuk memperbarui data terbaru.
+          </p>
+        </div>
+      </section>
+
+      <footer class="simulator-footer">
+        <p>
+          © <span id="currentYear"></span> Pelabuhan Indonesia |
+          <a href="#" id="refreshDashboard">Muat Ulang Dashboard</a> | Data
+          referensi: Pelindo Annual Report
+        </p>
+      </footer>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
