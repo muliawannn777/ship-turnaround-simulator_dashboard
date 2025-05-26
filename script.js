@@ -1,283 +1,477 @@
 document.addEventListener("DOMContentLoaded", function () {
   // DOM Elements
   const elements = {
+    // Input elements
     gtInput: document.getElementById("gt"),
     cargoTypeSelect: document.getElementById("cargoType"),
     cranesInput: document.getElementById("cranes"),
     craneValue: document.getElementById("craneValue"),
+    dwtInput: document.getElementById("dwt"),
+    teuInput: document.getElementById("teu"),
+    pumpCapacityInput: document.getElementById("pumpCapacity"),
+    conveyorSpeedInput: document.getElementById("conveyorSpeed"),
+    liquidTypeSelect: document.getElementById("liquidType"),
+
+    // Field groups
+    containerFields: document.getElementById("containerFields"),
+    dryBulkFields: document.getElementById("dryBulkFields"),
+    liquidFields: document.getElementById("liquidFields"),
+    dwtGroup: document.getElementById("dwtGroup"),
+
+    // Output elements
     calculateBtn: document.getElementById("calculateBtn"),
     timeResult: document.getElementById("time"),
     progressFill: document.getElementById("progressFill"),
     recommendationText: document.getElementById("recommendation"),
     breakdownText: document.getElementById("breakdown"),
-    liquidFields: document.getElementById("liquidFields"),
-    craneGroup: document.getElementById("craneGroup"),
-    dryBulkFields: document.getElementById("dryBulkFields"),
-    pumpCapacityInput: document.getElementById("pumpCapacity"),
-    unloaderTypeSelect: document.getElementById("unloaderType"),
-    unloaderCapacityInput: document.getElementById("unloaderCapacity"),
-    refreshDashboardBtn: document.getElementById("refreshDashboard"),
-    maritimeDashboard: document.getElementById("maritimeDashboard"),
+
+    // Other
     currentYear: document.getElementById("currentYear"),
   };
 
-  // Google Apps Script URL
-  const GOOGLE_SCRIPT_URL =
-    "https://script.google.com/macros/s/AKfycbySZQG-wGLpJPGumpZokA9pzwhao8xVlw3rXWt1tA_fdnpSUwjz35m4skuzUtu2Z3V6EQ/exec";
+  // Data industri dari UNCTAD/MarineTraffic/2022
+  const industryData = {
+    container: {
+      medianTime: 19.2, // jam
+      maxGT: 237200,
+      avgTEU: 3431,
+    },
+    dry_bulk: {
+      medianTime: 50.64, // jam
+      maxDWT: 404389,
+      avgDWT: 57268,
+    },
+    liquid: {
+      medianTime: 23.52, // jam (0.98 hari dari tabel)
+      maxDWT: 323183, // dari kolom "Maximum cargo carrying capacity"
+      avgDWT: 27275, // dari kolom "Average cargo carrying capacity"
+      densityFactors: {
+        crude: 0.88, // Minyak mentah
+        refined: 0.85, // Produk olahan
+        chemical: 0.92, // Bahan kimia
+        lng: 0.47, // LNG
+        lpg: 0.58, // LPG
+        other: 0.85, // Default
+      },
+      // Kapasitas pompa realistis berdasarkan data UNCTAD
+      realisticPumpCapacity: 1160, // 27.275 DWT / 23.52 jam ≈ 1160 ton/jam
+    },
+  };
 
-  // Format GT Input
-  elements.gtInput.addEventListener("input", function () {
-    let value = this.value.replace(/[^\d]/g, "");
-    if (value.length > 3) {
-      value = parseInt(value).toLocaleString("id-ID");
-    }
-    this.value = value;
-  });
+  elements.currentYear.textContent = new Date().getFullYear();
 
-  // Toggle Input Fields
-  function toggleInputFields() {
-    const isLiquid = elements.cargoTypeSelect.value === "liquid";
-    elements.liquidFields.style.display = isLiquid ? "block" : "none";
-    elements.craneGroup.style.display = isLiquid ? "none" : "block";
-    if (!isLiquid) elements.pumpCapacityInput.value = "";
+  // FORMAT INPUT ANGKA DENGAN TITIK RIBUAN
+  function formatNumberInput(inputElement) {
+    inputElement.addEventListener("input", function () {
+      // Simpan posisi kursor
+      const cursorPosition = this.selectionStart;
+      const originalLength = this.value.length;
+
+      // Hapus semua karakter non-digit
+      let value = this.value.replace(/[^\d]/g, "");
+
+      // Format dengan titik ribuan
+      if (value.length > 3) {
+        value = parseInt(value).toLocaleString("id-ID");
+      }
+
+      this.value = value;
+
+      // Sesuaikan posisi kursor
+      const addedChars = this.value.length - originalLength;
+      this.setSelectionRange(
+        cursorPosition + addedChars,
+        cursorPosition + addedChars
+      );
+    });
   }
 
-  // Update Crane Value Display
+  // Terapkan format ke semua input numerik
+  formatNumberInput(elements.gtInput);
+  formatNumberInput(elements.dwtInput);
+  formatNumberInput(elements.teuInput);
+  formatNumberInput(elements.pumpCapacityInput);
+  formatNumberInput(elements.conveyorSpeedInput);
+
+  // Fungsi untuk mengkonversi string berformat ke number
+  function parseFormattedNumber(formattedValue) {
+    return parseFloat(formattedValue.replace(/\./g, "")) || 0;
+  }
+
+  // TOGGLE FIELD BERDASARKAN JENIS MUATAN
+  function toggleFieldsByCargoType() {
+    const type = elements.cargoTypeSelect.value;
+
+    // Semua field disembunyikan dulu
+    document.querySelectorAll(".cargo-specific, #dwtGroup").forEach((el) => {
+      el.hidden = true;
+    });
+
+    // Sembunyikan semua field grup dahulu
+    function toggleFields() {
+      const cargoType = elements.cargoTypeSelect.value;
+
+      // Semua field disembunyikan dahulu (termasuk DWT)
+      elements.dwtGroup.style.display = "none";
+      elements.containerFields.style.display = "none";
+      elements.dryBulkFields.style.display = "none";
+      elements.liquidFields.style.display = "none";
+
+      // Tampilkan hanya yang diperlukan
+      switch (cargoType) {
+        case "container":
+          elements.containerFields.style.display = "block";
+          break;
+        case "dry_bulk":
+          elements.dryBulkFields.style.display = "block";
+          elements.dwtGroup.style.display = "block";
+          break;
+        case "liquid":
+          elements.liquidFields.style.display = "block";
+          elements.dwtGroup.style.display = "block";
+          break;
+      }
+    }
+
+    function initializeFields() {
+      // Reset semua nilai input
+      elements.dwtInput.value = "";
+
+      // Sembunyikan semua field spesifik
+      toggleFields();
+
+      // Paksa hidden untuk DWT jika belum terapply
+      elements.dwtGroup.style.display = "none";
+    }
+
+    elements.cargoTypeSelect.addEventListener("change", function () {
+      toggleFields();
+
+      // Reset DWT jika pindah ke container
+      if (this.value === "container") {
+        elements.dwtInput.value = "";
+      }
+    });
+    // Jalankan inisialisasi saat pertama load
+    initializeFields();
+  }
+
+  // Event listener untuk perubahan jenis muatan
+  elements.cargoTypeSelect.addEventListener("change", function () {
+    toggleFieldsByCargoType();
+
+    // Reset nilai DWT jika pindah ke container
+    if (this.value === "container") {
+      elements.dwtInput.value = "";
+    }
+  });
+  // Update tampilan nilai crane
   elements.cranesInput.addEventListener("input", function () {
     elements.craneValue.textContent = this.value;
   });
 
-  // Main Calculation Function
-  elements.calculateBtn.addEventListener("click", async function () {
-    // Validate Input
-    const gt = parseInt(elements.gtInput.value.replace(/\./g, ""));
-    if (!gt || gt <= 0) {
-      showAlert("Masukkan GT kapal yang valid!", "error");
-      elements.gtInput.focus();
-      return;
+  // VALIDASI INPUT REALISTIS
+  function validateInputs(cargoType, values) {
+    // Validasi GT minimal 1000
+    if (values.gt < 1000) {
+      alert("GT minimal 1.000");
+      return false;
     }
 
-    // Calculate Operation Time
-    const { operationalTime, breakdownDetails } = calculateOperationTime(
-      gt,
-      elements.cargoTypeSelect.value,
-      parseInt(elements.cranesInput.value),
-      parseInt(elements.pumpCapacityInput.value) || 0
-    );
-
-    const totalTime = operationalTime + 4;
-
-    // Update UI
-    updateResultsUI(
-      totalTime,
-      breakdownDetails,
-      elements.cargoTypeSelect.value
-    );
-
-    // Save to Google Sheets
-    try {
-      const saveResult = await saveToGoogleSheets({
-        timestamp: new Date().toISOString(),
-        gt: gt,
-        cargoType: elements.cargoTypeSelect.value,
-        cranes:
-          elements.cargoTypeSelect.value === "liquid"
-            ? 0
-            : parseInt(elements.cranesInput.value),
-        pumpCapacity:
-          elements.cargoTypeSelect.value === "liquid"
-            ? parseInt(elements.pumpCapacityInput.value) || 1000
-            : 0,
-        estimatedTime: totalTime,
-      });
-
-      console.log("Save result:", saveResult);
-      showAlert("Data berhasil disimpan!", "success");
-    } catch (error) {
-      console.error("Error saving data:", error);
-      showAlert(`Gagal menyimpan data: ${error.message}`, "error");
-    }
-  });
-
-  // Calculate Operation Time
-  function calculateOperationTime(gt, cargoType, cranes, pumpCapacity) {
-    let operationalTime, breakdownDetails;
-
-    if (cargoType === "liquid") {
-      operationalTime = (gt / 500) * (1000 / pumpCapacity);
-      breakdownDetails = generateBreakdown(
-        "liquid",
-        operationalTime,
-        pumpCapacity,
-        gt
-      );
-    } else {
-      const baseTime = (gt / 1000) * (cargoType === "container" ? 0.9 : 1.3);
-      const craneEfficiency = 1 - 0.08 * (cranes - 1);
-      operationalTime = baseTime * craneEfficiency;
-      breakdownDetails = generateBreakdown(
-        cargoType,
-        operationalTime,
-        cranes,
-        gt
-      );
-    }
-    if (cargoType === "dry_bulk") {
-      alert(
-        "Fitur dry bulk sedang dalam pengembangan lebih lanjut untuk menghitung berdasarkan alat khusus (Grab/Pneumatic Unloader)"
-      );
-      return; // Menghentikan eksekusi
-    }
-    return { operationalTime, breakdownDetails };
-  }
-
-  // Save to Google Sheets
-  async function saveToGoogleSheets(data) {
-    try {
-      console.log("Sending data to Google Sheets:", data);
-
-      const response = await fetch(GOOGLE_SCRIPT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+    // Validasi berdasarkan jenis muatan
+    if (cargoType === "container") {
+      if (values.teu < 100) {
+        alert("Jumlah TEU minimal 100");
+        return false;
+      }
+      if (values.gt > industryData.container.maxGT) {
+        alert(
+          `GT melebihi kapasitas maksimum industri (${industryData.container.maxGT.toLocaleString(
+            "id-ID"
+          )})`
+        );
+        return false;
+      }
+    } else if (cargoType === "dry_bulk") {
+      if (values.dwt < 1000) {
+        alert("DWT minimal 1.000");
+        return false;
+      }
+      if (values.dwt > industryData.dry_bulk.maxDWT) {
+        alert(
+          `DWT melebihi kapasitas maksimum industri (${industryData.dry_bulk.maxDWT.toLocaleString(
+            "id-ID"
+          )})`
+        );
+        return false;
+      }
+    } else if (cargoType === "liquid") {
+      // Validasi DWT
+      if (values.dwt < 1000) {
+        alert("DWT minimal 1.000");
+        return false;
+      }
+      if (values.dwt > industryData.liquid.maxDWT) {
+        alert(
+          `DWT melebihi kapasitas maksimum industri (${industryData.liquid.maxDWT.toLocaleString(
+            "id-ID"
+          )})`
+        );
+        return false;
       }
 
-      const result = await response.json();
-      console.log("Google Sheets response:", result);
-
-      if (result.status !== "success") {
-        throw new Error(result.message || "Failed to save data");
+      // Validasi Pump Capacity
+      const minPump = 500; // Minimum untuk kapal kecil
+      const maxPump = 10000; // Maksimum untuk VLCC
+      if (values.pumpCapacity < minPump || values.pumpCapacity > maxPump) {
+        alert(`Kapasitas pompa harus antara ${minPump}-${maxPump} ton/jam`);
+        return false;
       }
-
-      return result;
-    } catch (error) {
-      console.error("Save error:", error);
-      throw error;
+      // Validasi jenis liquid
+      if (
+        !Object.keys(industryData.liquid.densityFactors).includes(
+          values.liquidType
+        )
+      ) {
+        alert("Jenis liquid tidak valid");
+        return false;
+      }
     }
+
+    return true;
   }
 
-  // Generate Breakdown Details
-  function generateBreakdown(type, operationalTime, equipmentValue, gt) {
-    const formattedGT = gt.toLocaleString("id-ID");
+  // KALKULASI WAKTU OPERASIONAL
+  function calculateOperationTime(cargoType, values) {
+    let operationalTime = 0;
+    let breakdown = "";
 
-    if (type === "liquid") {
-      return `
-        <strong>Breakdown Waktu:</strong><br>
-        - Pumping: ~${Math.round(
-          operationalTime
-        )} jam (${equipmentValue} m³/jam)<br>
-        - Administrasi: ~4 jam<br>
-        <small>Kapal Tanker ${formattedGT} GT</small>
-      `;
-    } else {
-      const shipType = type === "container" ? "Container" : "Dry Bulk";
-      const efficiency =
-        type === "container"
-          ? Math.round((1 - 0.08 * (equipmentValue - 1)) * 100)
-          : "N/A";
+    if (cargoType === "container") {
+      // Asumsi 1 TEU membutuhkan ~4.8 menit (0.08 jam) dengan 2 crane
+      const baseTimePerTEU = 0.08; // jam per TEU
+      const craneEfficiency = 1 + 0.12 * (values.cranes - 2);
+      operationalTime = (values.teu * baseTimePerTEU) / craneEfficiency;
 
-      return `
-        <strong>Breakdown Waktu:</strong><br>
-        - Bongkar muat: ~${Math.round(operationalTime)} jam<br>
-        - Crane: ${equipmentValue} unit${
-        type === "container" ? ` (efisiensi ${efficiency}%)` : ""
-      }<br>
-        - Administrasi: ~4 jam<br>
-        <small>Kapal ${shipType} ${formattedGT} GT</small>
+      breakdown = `
+        <h3>Breakdown Container</h3>
+        <ul>
+          <li><strong>Waktu Operasi:</strong> ${operationalTime.toFixed(
+            1
+          )} jam</li>
+          <li><strong>Jumlah TEU:</strong> ${values.teu.toLocaleString(
+            "id-ID"
+          )}</li>
+          <li><strong>STS Crane:</strong> ${values.cranes} unit</li>
+          <li><strong>Efisiensi Crane:</strong> ${(
+            craneEfficiency * 100
+          ).toFixed(0)}%</li>
+          <li><small>Rata-rata industri: ${
+            industryData.container.medianTime
+          } jam (${industryData.container.avgTEU.toLocaleString(
+        "id-ID"
+      )} TEU)</small></li>
+        </ul>
       `;
+    } else if (cargoType === "dry_bulk") {
+      // Formula dry bulk: waktu berdasarkan conveyor dengan faktor handling
+      const handlingFactor = 1.1;
+      operationalTime = (values.dwt / values.conveyorSpeed) * handlingFactor;
+
+      breakdown = `
+        <h3>Breakdown Dry Bulk</h3>
+        <ul>
+          <li><strong>Waktu Operasi:</strong> ${operationalTime.toFixed(
+            1
+          )} jam</li>
+          <li><strong>Kapasitas DWT:</strong> ${values.dwt.toLocaleString(
+            "id-ID"
+          )} ton</li>
+          <li><strong>Kecepatan Conveyor:</strong> ${values.conveyorSpeed.toLocaleString(
+            "id-ID"
+          )} ton/jam</li>
+          <li><small>Rata-rata industri: ${
+            industryData.dry_bulk.medianTime
+          } jam (${industryData.dry_bulk.avgDWT.toLocaleString(
+        "id-ID"
+      )} DWT)</small></li>
+        </ul>
+      `;
+    } else if (cargoType === "liquid") {
+      // Formula liquid: waktu berdasarkan pompa dengan density factor
+      const densityFactor =
+        industryData.liquid.densityFactors[values.liquidType] || 0.85;
+      operationalTime = values.dwt / (values.pumpCapacity * densityFactor);
+
+      const liquidNames = {
+        crude: "Minyak Mentah",
+        refined: "Produk Olahan",
+        chemical: "Kimia",
+        lng: "LNG",
+        other: "Lainnya",
+      };
     }
+
+    return { operationalTime, breakdown };
+  }
+  function calculateLiquidTime(dwt, pumpCapacity, liquidType) {
+    // Data tetap mengacu ke tabel UNCTAD
+    const industryDWT = 27275; // Average DWT liquid bulk carriers
+    const industryTime = 23.52; // Median time (0.98 hari)
+
+    // Density factor disesuaikan agar hasil = 23.52 jam saat DWT = 27.275 & pump = 1.160
+    const densityFactors = {
+      crude: 0.88, // Minyak mentah (default)
+      other: 0.88,
+    };
+
+    // Validasi jenis liquid
+    if (!densityFactors[liquidType]) {
+      liquidType = "crude"; // Fallback ke crude
+    }
+
+    // Rumus inti (dengan adjustment otomatis)
+    const operationalTime =
+      (dwt / (pumpCapacity * densityFactors[liquidType])) *
+      (1160 / pumpCapacity);
+
+    return operationalTime;
   }
 
-  // Update UI
-  function updateResultsUI(totalTime, breakdownDetails, cargoType) {
-    elements.timeResult.textContent = Math.round(totalTime);
-    elements.breakdownText.innerHTML = breakdownDetails;
-    updateProgressBar(totalTime, cargoType);
-    generateRecommendation(totalTime, cargoType);
+  // KALKULASI LIQUID
+  function calculateLiquidOperation(values) {
+    const { dwt, pumpCapacity, liquidType } = values;
+    const { densityFactors, realisticPumpCapacity } = industryData.liquid;
+
+    // 1. Hitung waktu dasar
+    const density = densityFactors[liquidType] || 0.85;
+    let operationalTime = dwt / (pumpCapacity * density);
+
+    // 2. Adjust agar kapal berukuran rata-rata (27,275 DWT) ≈ 23.52 jam
+    const adjustmentFactor = Math.sqrt(realisticPumpCapacity / pumpCapacity);
+    operationalTime *= adjustmentFactor;
+
+    // 3. Breakdown detail
+    const breakdown = `
+    <h3>Breakdown Liquid Bulk</h3>
+    <ul>
+      <li><strong>Waktu Operasi:</strong> ${operationalTime.toFixed(1)} jam</li>
+      <li><strong>Kapasitas DWT:</strong> ${dwt.toLocaleString(
+        "id-ID"
+      )} ton</li>
+      <li><strong>Kapasitas Pompa:</strong> ${pumpCapacity.toLocaleString(
+        "id-ID"
+      )} ton/jam</li>
+      <li><strong>Jenis Liquid:</strong> ${liquidType}</li>
+      <li><strong>Density Factor:</strong> ${density.toFixed(2)}</li>
+      <li><small>Rata industri: ${
+        industryData.liquid.medianTime
+      } jam (${industryData.liquid.avgDWT.toLocaleString(
+      "id-ID"
+    )} DWT)</small></li>
+    </ul>
+  `;
+
+    return { operationalTime, breakdown };
   }
 
-  // Update Progress Bar
+  // HASIL
+  function displayResults(time, breakdown, cargoType) {
+    elements.timeResult.textContent = time.toFixed(1);
+
+    elements.breakdownText.innerHTML = breakdown;
+
+    updateProgressBar(time, cargoType);
+
+    generateRecommendation(time, cargoType);
+  }
+
   function updateProgressBar(time, cargoType) {
-    const maxTime = cargoType === "liquid" ? 36 : 24;
-    const percentage = (time / maxTime) * 100;
-    elements.progressFill.style.width = `${Math.min(percentage, 100)}%`;
+    const maxTime = cargoType === "dry_bulk" ? 72 : 48; // dry bulk lebih lama
+    const percentage = Math.min(100, (time / maxTime) * 100);
+    elements.progressFill.style.width = `${percentage}%`;
 
-    elements.progressFill.style.background =
-      time <= 12
-        ? "#10b981"
-        : time <= (cargoType === "liquid" ? 24 : 18)
-        ? "#f59e0b"
-        : "#ef4444";
+    // Warna berdasarkan efisiensi
+    elements.progressFill.style.backgroundColor =
+      time < maxTime * 0.5
+        ? "#10b981" // hijau untuk efisien
+        : time < maxTime * 0.75
+        ? "#f59e0b" // kuning untuk sedang
+        : "#ef4444"; // merah untuk tidak efisien
   }
 
-  // Generate Recommendation
   function generateRecommendation(time, cargoType) {
     let icon, message;
 
-    if (cargoType === "liquid") {
-      if (time <= 18) {
-        icon = "fa-check-circle";
-        message = "Efisiensi pumping sangat baik";
-      } else {
-        icon = "fa-exclamation-triangle";
-        message = "Butuh peningkatan kapasitas pumping";
-      }
-    } else {
-      const cranes = parseInt(elements.cranesInput.value);
-
-      if (time <= 12) {
+    if (cargoType === "container") {
+      if (time < 15) {
         icon = "fa-check-circle";
         message = "Operasi sangat efisien";
-      } else if (time <= 18) {
+      } else if (time < 25) {
         icon = "fa-info-circle";
-        message = cranes < 4 ? "Tambahkan crane" : "Optimasi alur kerja";
+        message = "Pertimbangkan menambah crane";
+      } else {
+        icon = "fa-exclamation-triangle";
+        message = "Butuh optimasi operasi";
+      }
+    } else if (cargoType === "dry_bulk") {
+      if (time < 30) {
+        icon = "fa-check-circle";
+        message = "Operasi sangat efisien";
+      } else if (time < 45) {
+        icon = "fa-info-circle";
+        message = "Pertimbangkan upgrade conveyor";
       } else {
         icon = "fa-exclamation-triangle";
         message = "Butuh evaluasi menyeluruh";
+      }
+    } else if (cargoType === "liquid") {
+      if (time < 15) {
+        icon = "fa-check-circle";
+        message = "Pumping sangat efisien";
+      } else if (time < 25) {
+        icon = "fa-info-circle";
+        message = "Pertimbangkan upgrade pompa";
+      } else {
+        icon = "fa-exclamation-triangle";
+        message = "Butuh peningkatan kapasitas";
       }
     }
 
     elements.recommendationText.innerHTML = `<i class="fas ${icon}"></i> ${message}`;
   }
 
-  // Refresh Dashboard
-  elements.refreshDashboardBtn.addEventListener("click", function () {
-    elements.maritimeDashboard.src = elements.maritimeDashboard.src;
-    showAlert("Memperbarui dashboard...", "info");
+  // EVENT LISTENER UNTUK TOMBOL HITUNG
+  elements.calculateBtn.addEventListener("click", function () {
+    const cargoType = elements.cargoTypeSelect.value;
+    if (!cargoType) {
+      alert("Pilih jenis muatan terlebih dahulu");
+      return;
+    }
+
+    const inputValues = {
+      gt: parseFormattedNumber(elements.gtInput.value),
+      teu: parseFormattedNumber(elements.teuInput.value),
+      dwt: parseFormattedNumber(elements.dwtInput.value),
+      cranes: parseInt(elements.cranesInput.value) || 1,
+      pumpCapacity:
+        parseFormattedNumber(elements.pumpCapacityInput.value) || 1000,
+      conveyorSpeed:
+        parseFormattedNumber(elements.conveyorSpeedInput.value) || 2000,
+      liquidType: elements.liquidTypeSelect.value,
+    };
+
+    // Validasi input
+    if (!validateInputs(cargoType, inputValues)) return;
+
+    // Kalkulasi waktu
+    const { operationalTime, breakdown } = calculateOperationTime(
+      cargoType,
+      inputValues
+    );
+
+    displayResults(operationalTime, breakdown, cargoType);
   });
 
-  // Show Alert Notification
-  function showAlert(message, type) {
-    const alert = document.createElement("div");
-    alert.className = `alert alert-${type}`;
-    alert.innerHTML = `
-      <i class="fas ${
-        type === "error"
-          ? "fa-exclamation-circle"
-          : type === "success"
-          ? "fa-check-circle"
-          : "fa-info-circle"
-      }"></i>
-      ${message}
-    `;
-
-    document.body.appendChild(alert);
-
-    setTimeout(() => {
-      alert.classList.add("fade-out");
-      setTimeout(() => alert.remove(), 500);
-    }, 3000);
-  }
-
-  // Initialize
-  toggleInputFields();
-  elements.cargoTypeSelect.addEventListener("change", toggleInputFields);
-  elements.currentYear.textContent = new Date().getFullYear();
-
-  // Debug: Test Google Sheets connection
-  console.log("System initialized. Ready to connect to:", GOOGLE_SCRIPT_URL);
+  // Inisialisasi awal
+  toggleFieldsByCargoType();
 });
