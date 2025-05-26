@@ -380,6 +380,15 @@ input[type="range"]::-webkit-slider-thumb:hover {
   padding: 0 var(--space-sm);
 }
 
+#dwtGroup, .cargo-specific {
+  display: none !important; /* Important untuk override style lain */
+}
+
+#dwtGroup[style*="display: block"],
+.cargo-specific[style*="display: block"] {
+  display: block !important;
+}
+
 /* ===== FOOTER ===== */
 .simulator-footer {
   text-align: center;
