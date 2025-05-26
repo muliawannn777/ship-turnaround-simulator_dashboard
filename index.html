@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ship Turnaround Simulator | Pelabuhan Nasional</title>
+    <title>Ship Turnaround Simulator | Pelabuhan Indonesia</title>
     <meta
       name="description"
       content="Simulator waktu bongkar muat kapal untuk pelabuhan Indonesia dengan dashboard analitik"
@@ -30,7 +30,7 @@
 
       <section class="simulator-card">
         <form id="simulatorForm">
-          <!-- GT Input -->
+          <!-- GT Input (Wajib untuk semua jenis) -->
           <div class="input-group">
             <label for="gt">
               <i class="fas fa-weight-hanging"></i> Gross Tonnage (GT)
@@ -42,58 +42,113 @@
               placeholder="Contoh: 20.000"
               aria-describedby="gtHelp"
             />
-            <small id="gtHelp" class="help-text"
-              >GT memengaruhi waktu dan biaya pelabuhan</small
-            >
+            <small id="gtHelp" class="help-text">
+              GT memengaruhi waktu dan biaya pelabuhan (minimal 1,000 GT)
+            </small>
           </div>
 
-          <!-- Cargo Type -->
+          <!-- Cargo Type Selector -->
           <div class="input-group">
             <label for="cargoType">
               <i class="fas fa-boxes"></i> Jenis Muatan
             </label>
             <select id="cargoType" aria-label="Pilih jenis muatan">
+              <option value="">-- Pilih Jenis Muatan --</option>
               <option value="container">Container</option>
               <option value="dry_bulk">Dry Bulk</option>
               <option value="liquid">Liquid (Tanker)</option>
             </select>
           </div>
 
-          <!-- Crane Input (hidden for liquid) -->
-          <div id="craneGroup" class="input-group">
-            <label for="cranes">
-              <i class="fas fa-crane"></i> Jumlah Crane
-            </label>
-            <input
-              type="range"
-              id="cranes"
-              min="1"
-              max="5"
-              value="3"
-              aria-describedby="craneHelp"
-            />
-            <div class="range-value">
-              <span id="craneValue">3</span>
-              <small id="craneHelp">(STS Crane)</small>
-            </div>
-          </div>
-
-          <!-- Liquid Specific (hidden by default) -->
-          <div id="liquidFields" class="input-group" hidden>
-            <label for="pumpCapacity">
-              <i class="fas fa-faucet"></i> Kapasitas Pumping (m³/jam)
+          <!-- DWT Input (Wajib untuk Dry Bulk dan Liquid) -->
+          <div id="dwtGroup" class="input-group" hidden>
+            <label for="dwt">
+              <i class="fas fa-ship"></i> DWT (Deadweight Tonnage)
             </label>
             <input
               type="number"
-              id="pumpCapacity"
-              placeholder="Contoh: 1000"
-              min="500"
+              id="dwt"
+              placeholder="Contoh: 50000"
+              min="1000"
               step="100"
             />
+            <small class="help-text">
+              Total kapasitas muatan termasuk bahan bakar (ton)
+            </small>
+          </div>
+
+          <!-- Container Specific Fields -->
+          <div id="containerFields" class="cargo-specific" hidden>
+            <div class="input-group">
+              <label for="teu">
+                <i class="fas fa-box"></i> Jumlah Container (TEU)
+              </label>
+              <input
+                type="number"
+                id="teu"
+                placeholder="Contoh: 1500"
+                min="100"
+                step="50"
+              />
+            </div>
+
+            <div class="input-group">
+              <label for="cranes">
+                <i class="fas fa-crane"></i> Jumlah STS Crane
+              </label>
+              <input type="range" id="cranes" min="1" max="5" value="2" />
+              <div class="range-value"><span id="craneValue">2</span> unit</div>
+            </div>
+          </div>
+
+          <!-- Dry Bulk Specific Fields -->
+          <div id="dryBulkFields" class="cargo-specific" hidden>
+            <div class="input-group">
+              <label for="conveyorSpeed">
+                <i class="fas fa-conveyor-belt"></i> Kecepatan Conveyor
+                (ton/jam)
+              </label>
+              <input
+                type="number"
+                id="conveyorSpeed"
+                placeholder="Contoh: 2000"
+                min="500"
+                step="100"
+              />
+            </div>
+          </div>
+
+          <!-- Liquid Specific Fields -->
+          <div id="liquidFields" class="cargo-specific" hidden>
+            <div class="input-group">
+              <label for="pumpCapacity">
+                <i class="fas fa-faucet"></i> Kapasitas Pompa (ton/jam)
+              </label>
+              <input
+                type="number"
+                id="pumpCapacity"
+                placeholder="Contoh: 500"
+                min="50"
+                step="10"
+              />
+            </div>
+
+            <div class="input-group">
+              <label for="liquidType">
+                <i class="fas fa-flask"></i> Jenis Liquid
+              </label>
+              <select id="liquidType">
+                <option value="crude">Minyak Mentah</option>
+                <option value="refined">Produk Olahan</option>
+                <option value="chemical">Kimia</option>
+                <option value="lng">LNG</option>
+                <option value="other">Lainnya</option>
+              </select>
+            </div>
           </div>
 
           <button type="button" id="calculateBtn" class="calculate-btn">
-            <i class="fas fa-calculator"></i> Hitung Data
+            <i class="fas fa-calculator"></i> Hitung Waktu Bongkar Muat
           </button>
         </form>
 
@@ -143,7 +198,7 @@
             allowfullscreen
             sandbox="allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
           ></iframe>
-        
+
           <p class="dashboard-note">
             <i class="fas fa-info-circle"></i> Dashboard membutuhkan waktu
             beberapa menit untuk memperbarui data terbaru.
@@ -153,8 +208,9 @@
 
       <footer class="simulator-footer">
         <p>
-          © <span id="currentYear"></span> Pelabuhan Nasional |
-          <a href="#" id="refreshDashboard">Muat Ulang Dashboard</a>
+          © <span id="currentYear"></span> Pelabuhan Indonesia |
+          <a href="#" id="refreshDashboard">Muat Ulang Dashboard</a> | Data
+          referensi: Pelindo Annual Report
         </p>
       </footer>
     </main>
